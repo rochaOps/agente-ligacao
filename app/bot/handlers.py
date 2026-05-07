@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytz
 from telegram import Update
-from telegram.ext import Application, ContextTypes
+from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters
 
 from config import (
     MAX_CALL_TURNS, MAX_INCOMING_TURNS, MAX_RECORD_DURATION,
@@ -98,12 +98,6 @@ async def execute_call(phone: str, context_text: str, text_jp: str, chat_id: int
 
     try:
         user_name = get_user_name()
-        # Versão concisa — abre como ligação comercial padrão japonesa.
-        # Alternativa com menção explícita ao AI (comentado para fallback futuro):
-        # intro = (
-        #     f"こちらはAIアシスタントです。{user_name}の代理でご連絡しております。"
-        #     f"{text_jp}"
-        # )
         intro = (
             f"お忙しいところ失礼いたします。"
             f"{user_name}の代理でご連絡しております。"
@@ -214,7 +208,7 @@ async def execute_call(phone: str, context_text: str, text_jp: str, chat_id: int
                     asyncio.create_task(bot.send_message(
                         chat_id, f"⏸ Hold: aguardando retorno ({hold_silence_count}/10)..."
                     ))
-                    continue  # wav_path é None, não toca nada
+                    continue
                 silence_streak += 1
                 logger.warning(f"SILENCE: turno {turn}, streak {silence_streak}")
                 if silence_streak >= SILENCE_STREAK_MAX:
@@ -222,7 +216,7 @@ async def execute_call(phone: str, context_text: str, text_jp: str, chat_id: int
                         chat_id,
                         f"⚠️ Áudio difícil ({silence_streak} turnos) — mantendo ligação, pedindo para repetir..."
                     ))
-                    silence_streak = 0  # reseta, continua tentando
+                    silence_streak = 0
                 else:
                     asyncio.create_task(bot.send_message(
                         chat_id, f"🔇 Silêncio ({silence_streak}/{SILENCE_STREAK_MAX}) — pedindo para repetir..."
@@ -350,7 +344,7 @@ async def execute_call(phone: str, context_text: str, text_jp: str, chat_id: int
             os.unlink(wav_path)
         await loop.run_in_executor(None, call_manager.hangup)
     finally:
-        start_call_session()  # always reset history for next call
+        start_call_session()
 
 
 # ── Incoming call ─────────────────────────────────────────────────────────────
@@ -422,7 +416,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     text  = update.message.text
     phone = extract_phone(text)
 
-    # Handle reply to a pending context request
     if not phone and update.effective_chat.id in _pending_context:
         pending = _pending_context.pop(update.effective_chat.id)
         if time.time() > pending["expires_at"]:
@@ -521,6 +514,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 💬 Só tradução: `preciso remarcar meu agendamento`
 
 *Comandos:*
+/ligar +5511999999999 [contexto] — inicia ligação
 /status — status do sistema
 /desligar — força encerramento da ligação ativa
 /perfil — dados cadastrados
@@ -533,6 +527,55 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 /skip — liga sem aguardar contexto adicional
 /help — esta mensagem
 """, parse_mode="Markdown")
+
+
+async def cmd_ligar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _authorized(update):
+        return
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "📞 Informe o número:\n`/ligar +5511999999999 [contexto opcional]`",
+            parse_mode="Markdown"
+        )
+        return
+
+    phone = extract_phone(args[0])
+    if not phone:
+        await update.message.reply_text(
+            "❌ Número inválido. Exemplo:\n`/ligar +5511999999999 agendar consulta`",
+            parse_mode="Markdown"
+        )
+        return
+
+    context_text = " ".join(args[1:]).strip() or "ligar"
+    chat_id      = update.effective_chat.id
+
+    horario = check_business_hours()
+    if horario["aviso"]:
+        await update.message.reply_text(horario["aviso"])
+
+    await update.message.reply_text(f"📞 Número: {phone}\n📋 Contexto: {context_text}")
+    await update.message.reply_text("🔍 Avaliando contexto...")
+    evaluation = await evaluate_context(phone, context_text)
+
+    if not evaluation.get("sufficient", True):
+        _pending_context[chat_id] = {
+            "phone":        phone,
+            "context_text": context_text,
+            "expires_at":   time.time() + 300,
+        }
+        await update.message.reply_text(
+            f"💬 Para ligar com mais eficácia:\n\n{evaluation['question']}\n\n"
+            "_(Responda ou envie /skip para ligar assim mesmo)_",
+            parse_mode="Markdown"
+        )
+        return
+
+    await update.message.reply_text("🔄 Preparando script...")
+    text_jp = await translate_to_japanese(context_text)
+    await update.message.reply_text(f"🇯🇵 Agente vai falar:\n\n{text_jp}")
+    asyncio.create_task(execute_call(phone, context_text, text_jp, chat_id))
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -715,3 +758,24 @@ async def cmd_transcricao(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"Data: {data_hora}\nTurnos: {duracao_turnos}\n\n*Resumo:*\n{resumo_pt}"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+# ── Handler registration ──────────────────────────────────────────────────────
+
+def register_handlers(app: Application) -> None:
+    app.add_handler(CommandHandler("ligar",       cmd_ligar))
+    app.add_handler(CommandHandler("help",        cmd_help))
+    app.add_handler(CommandHandler("status",      cmd_status))
+    app.add_handler(CommandHandler("desligar",    cmd_desligar))
+    app.add_handler(CommandHandler("perfil",      cmd_perfil))
+    app.add_handler(CommandHandler("historico",   cmd_historico))
+    app.add_handler(CommandHandler("recados",     cmd_recados))
+    app.add_handler(CommandHandler("fila",        cmd_fila))
+    app.add_handler(CommandHandler("resumo",      cmd_resumo))
+    app.add_handler(CommandHandler("retentar",    cmd_retentar))
+    app.add_handler(CommandHandler("limpar",      cmd_limpar))
+    app.add_handler(CommandHandler("skip",        cmd_skip))
+    app.add_handler(CommandHandler("transcricao", cmd_transcricao))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    logger.info("Telegram handlers registrados.")

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from telegram.ext import Application
 
 from api.bot_routes import router as bot_router, set_telegram_app as set_api_telegram_app
-from bot.handlers import set_telegram_app, handle_incoming_ring
+from bot.handlers import set_telegram_app, handle_incoming_ring, register_handlers
 from config import validate_env
 from core.stt import load_model
 from telephony.call_manager import call_manager
@@ -40,19 +40,23 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("SIM7600G-H não disponível — modo sem GSM")
 
-    logger.info("Iniciando bot Telegram (modo envio)...")
+    logger.info("Iniciando bot Telegram...")
     telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     set_telegram_app(telegram_app)
     set_api_telegram_app(telegram_app)
 
+    register_handlers(telegram_app)
+
     await telegram_app.initialize()
     await telegram_app.start()
-    logger.info("Bot Telegram pronto para enviar notificações.")
+    await telegram_app.updater.start_polling(drop_pending_updates=True)
+    logger.info("Bot Telegram pronto — polling ativo.")
 
     yield
 
     logger.info("Encerrando...")
     call_manager.disconnect()
+    await telegram_app.updater.stop()
     await telegram_app.stop()
     await telegram_app.shutdown()
 
