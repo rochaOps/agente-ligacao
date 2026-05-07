@@ -1,0 +1,12 @@
+.env
+*.env
+data/
+logs/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+app/.claude/
+app/.agents/
+app/skills-lock.json
+config/user_profile.json

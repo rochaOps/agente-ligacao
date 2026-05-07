@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+anthropic
+python-telegram-bot[job-queue]
+faster-whisper
+pyserial
+aiofiles
+sqlalchemy
+httpx
+pytz
+soxr
+numpy
+webrtcvad-wheels

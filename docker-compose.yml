@@ -1,0 +1,62 @@
+services:
+  agente-ligacao:
+    image: agente-ligacao-dev:latest
+    container_name: agente-ligacao
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Tokyo
+    volumes:
+      - ./app:/app
+      - ./logs:/logs
+      - ./data:/data
+      - ./config:/config
+      - whisper-cache:/root/.cache/whisper
+    devices:
+      - /dev/ttyGSM_at:/dev/ttyGSM_at
+      - /dev/ttyGSM_pcm:/dev/ttyGSM_pcm
+    networks:
+      - shared_net
+    depends_on:
+      voicevox:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-ubuntu20.04-latest
+    container_name: voicevox
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Tokyo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:50021/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  whisper-cache:
+
+networks:
+  shared_net:
+    name: shared_net
+    external: true
