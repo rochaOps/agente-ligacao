@@ -134,13 +134,13 @@ async def execute_call(phone: str, context_text: str, text_jp: str, chat_id: int
             if not call_manager.call_active:
                 break
 
-            await asyncio.sleep(0.4)
-            await bot.send_message(chat_id, f"👂 Turno {turn} — ouvindo atendente...")
+            await asyncio.sleep(0.1)
             t_turn_start = time.monotonic()
             recorded, heard_speech = await audio_manager.record_turn(duration=MAX_RECORD_DURATION)
             t_rec_done   = time.monotonic()
             result       = await loop.run_in_executor(None, lambda: speech_to_text(recorded))
             t_stt_done   = time.monotonic()
+            asyncio.create_task(bot.send_message(chat_id, f"👂 Turno {turn} — ouvindo atendente..."))
             rec_s  = t_rec_done - t_turn_start
             stt_s  = t_stt_done - t_rec_done
 
