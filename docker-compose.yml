@@ -41,6 +41,8 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Asia/Tokyo
+    networks:
+      - shared_net
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:50021/version || exit 1"]
       interval: 30s
