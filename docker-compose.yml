@@ -9,16 +9,9 @@ services:
       - .env
     environment:
       - TZ=Asia/Tokyo
-      - WHISPER_MODEL=large-v3
-      - WHISPER_DEVICE=cuda
-      - WHISPER_COMPUTE_TYPE=float16
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - WHISPER_MODEL=small
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=int8
     volumes:
       - ./app:/app
       - ./logs:/logs

@@ -29,9 +29,9 @@ def load_model() -> None:
     logger.info(f"Carregando faster-whisper {WHISPER_MODEL} device={device} compute={compute_type}...")
     try:
         _model = WhisperModel(WHISPER_MODEL, device=device, **kwargs)
-    except RuntimeError as e:
-        if "out of memory" in str(e).lower() and device != "cpu":
-            logger.warning(f"CUDA OOM ao carregar {WHISPER_MODEL}, caindo para CPU int8")
+    except (RuntimeError, Exception) as e:
+        if device != "cpu" and any(x in str(e).lower() for x in ("out of memory", "libcublas", "cuda", "cannot be loaded", "not found")):
+            logger.warning(f"GPU indisponível ({e.__class__.__name__}: {e}), caindo para CPU int8")
             _model = WhisperModel(WHISPER_MODEL, device="cpu",
                                   compute_type="int8", cpu_threads=WHISPER_THREADS)
         else:
