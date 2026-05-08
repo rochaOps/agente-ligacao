@@ -13,7 +13,7 @@ from config import (
     TIMEZONE,
 )
 from core.agent import (
-    translate_to_japanese, translate_to_portuguese,
+    translate_to_portuguese,
     start_call_session, get_call_summary, get_full_transcript,
     process_call_turn, generate_call_summary, process_incoming_call, get_user_name,
 )
