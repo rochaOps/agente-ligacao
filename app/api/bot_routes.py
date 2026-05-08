@@ -5,29 +5,20 @@ import sqlite3
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from telegram.ext import Application
 
 from config import DB_PATH, PROFILE_PATH
 from bot.handlers import (
     _retry_queue,
-    _pending_context,
     check_business_hours,
     execute_call,
 )
-from core.agent import get_call_summary
+from core.agent import evaluate_context, get_call_summary
 from telephony.call_manager import call_manager
 from utils.db import buscar_historico, buscar_recados, buscar_resumos
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bot", tags=["dispatcher"])
-
-_telegram_app: Application | None = None
-
-
-def set_telegram_app(app: Application) -> None:
-    global _telegram_app
-    _telegram_app = app
 
 
 class CallRequest(BaseModel):
@@ -55,7 +46,6 @@ async def api_status() -> dict:
         "call_active": call_manager.call_active,
         "business_hours": horario,
         "retry_queue_size": len(_retry_queue),
-        "pending_context_count": len(_pending_context),
     }
 
 
@@ -130,14 +120,18 @@ async def api_transcricao() -> dict:
     }
 
 
+@router.get("/evaluate")
+async def api_evaluate(phone: str, context: str = "") -> dict:
+    result = await evaluate_context(phone, context)
+    return result
+
+
 @router.post("/call/start")
 async def api_call_start(req: CallRequest, background_tasks: BackgroundTasks) -> dict:
     if call_manager.call_active:
         raise HTTPException(status_code=409, detail="Ligação já em andamento")
     if not req.phone_number.strip():
         raise HTTPException(status_code=422, detail="phone_number não pode ser vazio")
-    if not req.context.strip():
-        raise HTTPException(status_code=422, detail="context não pode ser vazio")
 
     import os
     from core.agent import translate_to_japanese
@@ -180,24 +174,23 @@ async def api_limpar() -> dict:
 
 
 @router.post("/skip")
-async def api_skip(background_tasks: BackgroundTasks) -> dict:
+async def api_skip(req: CallRequest, background_tasks: BackgroundTasks) -> dict:
     import os
     from core.agent import translate_to_japanese
 
-    if not _pending_context:
-        raise HTTPException(status_code=404, detail="Nenhuma ligação aguardando contexto")
+    if call_manager.call_active:
+        raise HTTPException(status_code=409, detail="Ligação já em andamento")
+    if not req.phone_number.strip():
+        raise HTTPException(status_code=422, detail="phone_number não pode ser vazio")
 
-    chat_id_key = next(iter(_pending_context))
-    pending = _pending_context.pop(chat_id_key)
-
-    text_jp = await translate_to_japanese(pending["context_text"])
-    background_tasks.add_task(
-        execute_call, pending["phone"], pending["context_text"], text_jp, chat_id_key
-    )
+    chat_id = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+    text_jp = await translate_to_japanese(req.context)
+    background_tasks.add_task(execute_call, req.phone_number, req.context, text_jp, chat_id)
     return {
         "status": "dispatched",
-        "phone": pending["phone"],
-        "context": pending["context_text"],
+        "phone_number": req.phone_number,
+        "context": req.context,
+        "text_jp": text_jp,
     }
 
 

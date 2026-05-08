@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from telegram.ext import Application
 
-from api.bot_routes import router as bot_router, set_telegram_app as set_api_telegram_app
+from api.bot_routes import router as bot_router
 from bot.handlers import set_telegram_app, handle_incoming_ring
 from config import validate_env
 from core.stt import load_model
@@ -43,7 +43,6 @@ async def lifespan(app: FastAPI):
     logger.info("Iniciando cliente Telegram (send-only)...")
     telegram_app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     set_telegram_app(telegram_app)
-    set_api_telegram_app(telegram_app)
 
     await telegram_app.initialize()
     await telegram_app.start()
