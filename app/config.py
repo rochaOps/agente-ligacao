@@ -19,6 +19,7 @@ PROFILE_PATH = "/config/user_profile.json"
 
 # ── Whisper / STT ─────────────────────────────────────────────────────────────
 WHISPER_MODEL        = os.getenv("WHISPER_MODEL",        "small")
+WHISPER_DEVICE       = os.getenv("WHISPER_DEVICE",       "cpu")
 WHISPER_THREADS      = int(os.getenv("WHISPER_THREADS",  "4"))
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 CONFIDENCE_MIN       = float(os.getenv("CONFIDENCE_MIN",       "0.4"))

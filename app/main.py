@@ -9,7 +9,7 @@ from telegram.ext import Application
 from api.bot_routes import router as bot_router
 from bot.handlers import set_telegram_app, handle_incoming_ring
 from config import validate_env
-from core.stt import load_model
+
 from telephony.call_manager import call_manager
 from utils.db import init_db
 
@@ -29,9 +29,6 @@ async def lifespan(app: FastAPI):
 
     logger.info("Inicializando banco de dados...")
     init_db()
-
-    logger.info("Pré-carregando modelo Whisper...")
-    load_model()
 
     logger.info("Inicializando SIM7600G-H...")
     if call_manager.initialize():

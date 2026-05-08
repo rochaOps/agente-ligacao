@@ -10,7 +10,7 @@ from faster_whisper import WhisperModel
 
 from config import (
     SAMPLE_RATE, SAMPLE_WIDTH, TMP_DIR,
-    WHISPER_MODEL, WHISPER_THREADS, WHISPER_COMPUTE_TYPE,
+    WHISPER_MODEL, WHISPER_DEVICE, WHISPER_THREADS, WHISPER_COMPUTE_TYPE,
     CONFIDENCE_UNCERTAIN,
 )
 
@@ -21,9 +21,21 @@ _model: WhisperModel | None = None
 
 def load_model() -> None:
     global _model
-    logger.info(f"Carregando faster-whisper {WHISPER_MODEL} {WHISPER_COMPUTE_TYPE}...")
-    _model = WhisperModel(WHISPER_MODEL, device="cpu",
-                          compute_type=WHISPER_COMPUTE_TYPE, cpu_threads=WHISPER_THREADS)
+    device = WHISPER_DEVICE
+    compute_type = WHISPER_COMPUTE_TYPE
+    kwargs = {"compute_type": compute_type}
+    if device == "cpu":
+        kwargs["cpu_threads"] = WHISPER_THREADS
+    logger.info(f"Carregando faster-whisper {WHISPER_MODEL} device={device} compute={compute_type}...")
+    try:
+        _model = WhisperModel(WHISPER_MODEL, device=device, **kwargs)
+    except RuntimeError as e:
+        if "out of memory" in str(e).lower() and device != "cpu":
+            logger.warning(f"CUDA OOM ao carregar {WHISPER_MODEL}, caindo para CPU int8")
+            _model = WhisperModel(WHISPER_MODEL, device="cpu",
+                                  compute_type="int8", cpu_threads=WHISPER_THREADS)
+        else:
+            raise
     logger.info("faster-whisper carregado!")
 
 
